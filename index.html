@@ -167,6 +167,42 @@
   .fullreset:active{transform:translateY(1px);}
   .fullreset:focus-visible{outline:3px solid rgba(199,154,63,.6);outline-offset:2px;}
 
+  /* 共有バー・結果ボード */
+  .share{display:flex;gap:8px;align-items:center;margin:0 2px 12px;flex-wrap:wrap;}
+  .share-status{font-size:11.5px;font-weight:700;color:#9a6b2b;background:#f3e7cf;
+    border:1px solid #e4d3b0;border-radius:999px;padding:5px 10px;white-space:nowrap;}
+  .share-status.ok{color:#2f7d4f;background:#e6f3ea;border-color:#bfe2cb;}
+  .name-input{flex:1;min-width:130px;height:38px;border:1.5px solid #d9c9ad;border-radius:10px;
+    padding:0 12px;font-family:inherit;font-size:15px;color:var(--sumi);background:#fbf6ec;}
+  .name-input:focus{outline:none;border-color:var(--gold);}
+  .num.taken{background:#e7dcc6;border-color:#e0d2b6;color:#9c8c6f;}
+  .num.taken::after{content:"済";position:absolute;top:-7px;right:-5px;font-size:9px;font-weight:800;
+    background:var(--slate);color:#fff;border-radius:6px;padding:1px 4px;line-height:1.2;}
+  .num{position:relative;}
+  .num.taken.taken-hit::after{content:"当";background:var(--shu);}
+  .banner .note{font-size:12px;color:#9a6b2b;font-weight:600;}
+  .live{margin-top:14px;background:#fbf6ec;border-radius:12px;padding:11px 12px;
+    box-shadow:inset 0 0 0 1px rgba(138,90,43,.14);}
+  .live-head{font-size:12px;font-weight:800;letter-spacing:.14em;color:#8a5a2b;margin-bottom:9px;
+    display:flex;align-items:center;gap:8px;}
+  .live-head::after{content:"";flex:1;height:1px;background:rgba(138,90,43,.28);}
+  .live-grid{display:flex;flex-wrap:wrap;gap:6px;}
+  .live-empty{font-size:12px;color:#9b8c72;}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;
+    border-radius:999px;padding:4px 9px;background:#f1e7d3;color:#6b5330;border:1px solid #e2d3b4;
+    font-variant-numeric:tabular-nums;}
+  .chip .who{font-weight:600;color:#7a6a4c;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .chip .res{font-weight:800;}
+  .chip.hit{background:#fbe6e8;border-color:#f0c9ce;color:var(--shu-deep);}
+  .chip.hit .res{color:var(--shu);}
+  .chip.miss{color:#5f6b7e;}
+  .org-reset{margin-top:14px;text-align:center;}
+  .org-reset button{appearance:none;background:transparent;border:1px dashed rgba(178,31,45,.45);
+    color:#b21f2d;font-size:11.5px;font-weight:700;border-radius:999px;padding:6px 13px;cursor:pointer;
+    font-family:inherit;letter-spacing:.03em;}
+  .org-reset button:active{transform:translateY(1px);}
+  .org-reset button:focus-visible{outline:3px solid rgba(178,31,45,.45);outline-offset:2px;}
+
   @media (prefers-reduced-motion:reduce){
     .stamp.pop{animation:none;transform:scale(1) rotate(-3deg);opacity:1;}
     .ring.go{animation:none;}
@@ -218,6 +254,10 @@
     </header>
 
     <section class="panel">
+      <div class="share">
+        <div class="share-status" id="shareStatus">共有：準備中…</div>
+        <input id="nameInput" class="name-input" type="text" placeholder="お名前（任意）" maxlength="12" autocomplete="off">
+      </div>
       <div class="panel-label">番号をえらぶ</div>
       <div class="pick" id="pick" role="group" aria-label="番号を選ぶ"></div>
 
@@ -242,21 +282,42 @@
       </div>
 
       <div class="tally" id="tally"></div>
-      <div class="fullreset-wrap">
-        <button class="fullreset" id="fullreset" type="button">最初の状態に戻す</button>
+
+      <div class="live">
+        <div class="live-head">みんなの結果（リアルタイム）</div>
+        <div class="live-grid" id="liveGrid"></div>
+      </div>
+
+      <div class="org-reset">
+        <button id="fullreset" type="button">【幹事用】全員の記録を消す</button>
       </div>
     </section>
 
     <div class="foot">
       同じリンクを全員で開けば、結果は全員共通で公平です（ミルフィーユは16人ぶん）。<br>
-      本番は「自分の番号を1回だけ」タップしてください。
+      本番は「自分の番号を1回だけ」タップ。結果はその場で全員に共有されます。
     </div>
   </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 <script>
 (function(){
   "use strict";
-  // ---- 固定シードで全員同じ盤面（＝公平） ----
+
+  /* ============================================================
+     ★リアルタイム共有の設定（幹事がここに貼るだけ）★
+     Firebaseコンソール →「プロジェクトの設定」→ 構成(config) から
+       apiKey と databaseURL の2つをコピーして下の "" の中に貼る。
+     貼らなければ「共有オフ（各自の端末だけ）」で普通に動きます。
+     ============================================================ */
+  var FIREBASE_CONFIG = {
+    apiKey:      "AIzaSyCHR6W6ZDlMk9OlE0ICvqd6hoIK4l8KlZw",
+    databaseURL: "https://maisonfrancemillefeuillebattle-default-rtdb.firebaseio.com/"
+  };
+  var ROOM = "millefeuille";   /* 共有の部屋名。別のくじにする時だけ変える */
+
+  /* ---- 固定シードで全員同じ盤面（＝公平） ---- */
   function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
   var N=32, L=40, SEED=20260721;
   var rnd=mulberry32(SEED);
@@ -268,96 +329,124 @@
     }
     rungs.push(row);
   }
-  function traceEnd(start){
-    var col=start;
-    for(var l=0;l<L;l++){
-      if(col-1>=0 && rungs[l][col-1]) col-=1;
-      else if(col<=N-2 && rungs[l][col]) col+=1;
-    }
-    return col;
-  }
-  // 下端の当たり配置（16 当たり / 16 はずれ）
+  function traceEnd(start){var col=start;for(var l=0;l<L;l++){if(col-1>=0&&rungs[l][col-1])col-=1;else if(col<=N-2&&rungs[l][col])col+=1;}return col;}
   var bottom=[]; for(var b=0;b<16;b++)bottom.push(true); for(var b2=0;b2<16;b2++)bottom.push(false);
   for(var s=bottom.length-1;s>0;s--){var j=Math.floor(rnd()*(s+1));var tmp=bottom[s];bottom[s]=bottom[j];bottom[j]=tmp;}
 
-  // ---- 座標 ----
-  var MX=20, TOP=30, GAP, ROW=13, BOT_PAD=30;
-  var W=656, H=604;
+  /* ---- 座標 ---- */
+  var MX=20, TOP=30, GAP, ROW=13;
+  var W=656;
   GAP=(W-MX*2)/(N-1);
   var bottomY=TOP+L*ROW;
   function colX(i){return MX+i*GAP;}
 
-  var SVG="http://www.w3.org/2000/svg";
+  var SVGNS="http://www.w3.org/2000/svg";
   var svg=document.getElementById("svg");
-  function el(t,a){var e=document.createElementNS(SVG,t);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  function el(t,a){var e=document.createElementNS(SVGNS,t);for(var k in a)e.setAttribute(k,a[k]);return e;}
 
-  // 縦線
-  for(var c=0;c<N;c++){
-    svg.appendChild(el("line",{class:"col",x1:colX(c),y1:TOP,x2:colX(c),y2:bottomY}));
-  }
-  // 横棒
-  for(var lv=0;lv<L;lv++){
-    for(var ii=0;ii<N-1;ii++){
-      if(rungs[lv][ii]){
-        var y=TOP+(lv+1)*ROW;
-        svg.appendChild(el("line",{class:"rung",x1:colX(ii),y1:y,x2:colX(ii+1),y2:y}));
-      }
-    }
-  }
-  // 下端キャップ（中立色。結果でだけ色づく）
+  for(var c=0;c<N;c++){svg.appendChild(el("line",{class:"col",x1:colX(c),y1:TOP,x2:colX(c),y2:bottomY}));}
+  for(var lv=0;lv<L;lv++){for(var ii=0;ii<N-1;ii++){if(rungs[lv][ii]){var y=TOP+(lv+1)*ROW;svg.appendChild(el("line",{class:"rung",x1:colX(ii),y1:y,x2:colX(ii+1),y2:y}));}}}
   var caps=[];
-  for(var d=0;d<N;d++){
-    var cap=el("circle",{class:"cap",cx:colX(d),cy:bottomY,r:5});
-    caps.push(cap); svg.appendChild(cap);
-  }
-  // 上端の番号ラベル（1始まり）
-  for(var t=0;t<N;t++){
-    var lb=el("text",{class:"startlbl",x:colX(t),y:TOP-9});
-    lb.textContent=(t+1); svg.appendChild(lb);
-  }
-  // トレース線＋先端ドット（最前面）
+  for(var d=0;d<N;d++){var cap=el("circle",{class:"cap",cx:colX(d),cy:bottomY,r:5});caps.push(cap);svg.appendChild(cap);}
+  for(var t=0;t<N;t++){var lb=el("text",{class:"startlbl",x:colX(t),y:TOP-9});lb.textContent=(t+1);svg.appendChild(lb);}
   var trace=el("polyline",{id:"trace",points:""}); svg.appendChild(trace);
   var tip=el("circle",{id:"tip",cx:colX(0),cy:TOP,r:6,visibility:"hidden"}); svg.appendChild(tip);
 
-  // ---- 経路の点列 ----
   function pathPoints(start){
     var pts=[[colX(start),TOP]]; var col=start;
     for(var lv=0;lv<L;lv++){
       var yN=TOP+(lv+1)*ROW, ncol=col;
-      if(col-1>=0 && rungs[lv][col-1]) ncol=col-1;
-      else if(col<=N-2 && rungs[lv][col]) ncol=col+1;
+      if(col-1>=0&&rungs[lv][col-1])ncol=col-1;
+      else if(col<=N-2&&rungs[lv][col])ncol=col+1;
       pts.push([colX(col),yN]);
-      if(ncol!==col) pts.push([colX(ncol),yN]);
+      if(ncol!==col)pts.push([colX(ncol),yN]);
       col=ncol;
     }
     return {pts:pts,end:col};
   }
 
-  // ---- UI要素 ----
+  /* ---- UI要素 ---- */
   var pick=document.getElementById("pick");
   var banner=document.getElementById("banner");
   var stamp=document.getElementById("stamp");
   var ring=document.getElementById("ring");
   var actions=document.getElementById("actions");
   var tally=document.getElementById("tally");
-  var buttons=[];
-  var revealed={}; // このデバイスで確認済み
-  var animating=false, current=null;
+  var nameInput=document.getElementById("nameInput");
+  var shareStatus=document.getElementById("shareStatus");
+  var liveGrid=document.getElementById("liveGrid");
+  var buttons=[], animating=false, current=null;
 
-  for(var n=1;n<=N;n++){
-    (function(n){
-      var btn=document.createElement("button");
-      btn.className="num"; btn.type="button"; btn.textContent=n;
-      btn.setAttribute("aria-label",n+"番");
-      btn.addEventListener("click",function(){ choose(n-1,btn); });
-      buttons.push(btn); pick.appendChild(btn);
-    })(n);
+  for(var n=1;n<=N;n++){(function(n){
+    var btn=document.createElement("button");
+    btn.className="num"; btn.type="button"; btn.textContent=n;
+    btn.setAttribute("aria-label",n+"番");
+    btn.addEventListener("click",function(){ choose(n-1,btn); });
+    buttons.push(btn); pick.appendChild(btn);
+  })(n);}
+
+  /* ---- 共有バックエンド（Firebase / 無ければローカル） ---- */
+  var db=null, SHARED=false, picksRef=null, remote={}, localPicks={};
+  function setStatus(msg,ok){ shareStatus.className="share-status"+(ok?" ok":""); shareStatus.textContent="共有："+msg; }
+  (function initShare(){
+    try{
+      if(window.firebase && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf("ここに")<0){
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db=firebase.database();
+        picksRef=db.ref("rooms/"+ROOM+"/picks");
+        SHARED=true;
+        setStatus("接続中…",false);
+        picksRef.on("value",function(snap){
+          remote=snap.val()||{}; renderBoard(); setStatus("接続済み（リアルタイム）",true);
+        },function(){ SHARED=false; setStatus("接続できません。各自の端末だけで表示します",false); renderBoard(); });
+      }else{
+        setStatus("オフ（設定すると全員で共有できます）",false);
+      }
+    }catch(e){ SHARED=false; setStatus("設定エラー。各自の端末だけで表示します",false); }
+    renderBoard();
+  })();
+
+  function curData(){ return SHARED?remote:localPicks; }
+  function getName(){ return (nameInput&&nameInput.value||"").trim().slice(0,12); }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(ch){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch];}); }
+
+  function renderBoard(){
+    var data=curData();
+    var nums=Object.keys(data).map(Number).filter(function(x){return x>=1&&x<=32;}).sort(function(a,b){return a-b;});
+    liveGrid.innerHTML="";
+    if(nums.length===0){
+      var em=document.createElement("div"); em.className="live-empty";
+      em.textContent = SHARED? "まだ誰も引いていません。" : "まだ引いていません。";
+      liveGrid.appendChild(em);
+    }else{
+      nums.forEach(function(nm){
+        var dd=data[nm], hit=(dd&&dd.r==1);
+        var chip=document.createElement("div"); chip.className="chip "+(hit?"hit":"miss");
+        chip.innerHTML='<b>'+nm+'</b>'+((dd&&dd.name)?'<span class="who">'+esc(dd.name)+'</span>':'')+'<span class="res">'+(hit?"当たり":"はずれ")+'</span>';
+        liveGrid.appendChild(chip);
+      });
+    }
+    var drawn=nums.length, hits=nums.filter(function(nm){return data[nm].r==1;}).length;
+    tally.innerHTML = drawn ? ('引いた人：<b>'+drawn+'</b> / 32　　当たり：<b>'+hits+'</b> / 16')
+                            : (SHARED? '引いた人：<b>0</b> / 32' : 'このデバイスで確認：<b>0</b> / 32');
+    buttons.forEach(function(btn,i){
+      var dd=data[i+1];
+      btn.classList.toggle("taken",!!dd);
+      btn.classList.toggle("taken-hit",!!(dd&&dd.r==1));
+    });
   }
-  updateTally();
 
-  function updateTally(){
-    var k=Object.keys(revealed).length;
-    tally.innerHTML='このデバイスで確認済み：<b>'+k+'</b> / 32';
+  function recordPick(idx,hit){
+    var num=String(idx+1), name=getName();
+    if(SHARED && picksRef){
+      db.ref("rooms/"+ROOM+"/picks/"+num).transaction(function(cur){
+        if(cur) return;                 // 既に誰かが引いている→そのまま
+        return {r:hit?1:0, name:name||null, ts:Date.now()};
+      });
+    }else{
+      if(!localPicks[num]) localPicks[num]={r:hit?1:0, name:name||null, ts:Date.now()};
+      renderBoard();
+    }
   }
 
   function clearActive(){buttons.forEach(function(b){b.classList.remove("active");});}
@@ -366,63 +455,51 @@
     if(animating) return;
     clearActive(); btn.classList.add("active");
     current=idx;
-    // リセット表示
     banner.classList.remove("show"); stamp.className="stamp"; ring.className="ring";
     actions.classList.remove("show");
     caps.forEach(function(c){c.classList.remove("hit","miss");});
-    var pp=pathPoints(idx);
-    animatePath(pp,btn);
+    animatePath(pathPoints(idx),btn);
   }
 
   function animatePath(pp,btn){
     animating=true;
-    var pts=pp.pts;
-    // 累積距離
-    var segs=[],total=0;
-    for(var i=1;i<pts.length;i++){
-      var dx=pts[i][0]-pts[i-1][0], dy=pts[i][1]-pts[i-1][1];
-      var d=Math.hypot(dx,dy); segs.push(d); total+=d;
-    }
+    var pts=pp.pts, segs=[], total=0;
+    for(var i=1;i<pts.length;i++){var dx=pts[i][0]-pts[i-1][0],dy=pts[i][1]-pts[i-1][1];var dd=Math.hypot(dx,dy);segs.push(dd);total+=dd;}
     tip.setAttribute("visibility","visible");
     var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;
-    var DUR=reduce?0:1450;
-    var t0=null;
+    var DUR=reduce?0:1450, t0=null;
     function frame(ts){
       if(t0===null)t0=ts;
       var p=DUR===0?1:Math.min(1,(ts-t0)/DUR);
-      var e=1-Math.pow(1-p,2); // easeOutQuad
-      var dist=e*total, acc=0, k=0;
-      var drawn=[pts[0].slice()];
-      var tipXY=pts[pts.length-1];
+      var e=1-Math.pow(1-p,2);
+      var dist=e*total, acc=0;
+      var drawn=[pts[0].slice()], tipXY=pts[pts.length-1];
       for(var i=1;i<pts.length;i++){
         if(acc+segs[i-1]>=dist){
           var r=(dist-acc)/segs[i-1];
-          var x=pts[i-1][0]+(pts[i][0]-pts[i-1][0])*r;
-          var y=pts[i-1][1]+(pts[i][1]-pts[i-1][1])*r;
+          var x=pts[i-1][0]+(pts[i][0]-pts[i-1][0])*r, y=pts[i-1][1]+(pts[i][1]-pts[i-1][1])*r;
           drawn.push([x,y]); tipXY=[x,y]; break;
-        } else { drawn.push(pts[i].slice()); acc+=segs[i-1]; }
+        }else{ drawn.push(pts[i].slice()); acc+=segs[i-1]; }
       }
       trace.setAttribute("points",drawn.map(function(q){return q[0]+","+q[1];}).join(" "));
       tip.setAttribute("cx",tipXY[0]); tip.setAttribute("cy",tipXY[1]);
-      if(p<1){requestAnimationFrame(frame);}
-      else{ animating=false; reveal(pp.end,btn); }
+      if(p<1){requestAnimationFrame(frame);} else { animating=false; reveal(pp.end,btn); }
     }
     requestAnimationFrame(frame);
   }
 
   function reveal(end,btn){
     var hit=bottom[end];
+    var already=!!curData()[String(current+1)];
     caps[end].classList.add(hit?"hit":"miss");
-    banner.innerHTML=(current+1)+'番は … <b>'+(hit?'当たり！':'はずれ')+'</b>';
+    banner.innerHTML=(current+1)+'番は … <b>'+(hit?'当たり！':'はずれ')+'</b>'+(already?' <span class="note">（すでに引き済み）</span>':'');
     banner.classList.add("show");
     stamp.className="stamp "+(hit?"hit":"miss")+" pop";
-    stamp.innerHTML= hit
-      ? '<span class="big">当</span><span class="small">あたり</span>'
-      : '<span class="big">はずれ</span>';
+    stamp.innerHTML= hit ? '<span class="big">当</span><span class="small">あたり</span>' : '<span class="big">はずれ</span>';
     if(hit){ ring.className="ring go"; }
     actions.classList.add("show");
-    btn.classList.remove("active"); btn.classList.add("done");
-    if(!revealed[current]){revealed[current]=true; updateTally();}
+    btn.classList.remove("active");
+    if(!already) recordPick(current,hit);
     if(navigator.vibrate){ navigator.vibrate(hit?[0,40,60,40]:30); }
   }
 
@@ -437,20 +514,20 @@
     current=null;
   }
 
-  // 別の番号をためす：表示だけ戻す（確認済みは保持）
   document.getElementById("reset").addEventListener("click",function(){
     if(animating) return;
     clearDisplay();
     window.scrollTo({top:0,behavior:"smooth"});
   });
 
-  // 最初の状態に戻す：✓と確認済みカウントも含めて全部リセット
   document.getElementById("fullreset").addEventListener("click",function(){
     if(animating) return;
+    var ok=window.confirm("全員の記録を消して最初からにします。よろしいですか？\n（これまで引いた結果の記録がすべて消えます）");
+    if(!ok) return;
+    if(SHARED && picksRef){ picksRef.remove(); }
+    localPicks={};
     clearDisplay();
-    buttons.forEach(function(b){b.classList.remove("done","active");});
-    revealed={};
-    updateTally();
+    renderBoard();
     window.scrollTo({top:0,behavior:"smooth"});
   });
 })();
